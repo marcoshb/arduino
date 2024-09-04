@@ -1,150 +1,170 @@
 /**** Libraries *****/
 
-// DHT-22 Sensor temperature and humidity sensor
+// DHT-22 Sensor for temperature and humidity
 #include <DHT.h>
-#define DHT_PIN 2       // what pin we're connected to
-#define DHT_TYPE DHT22  // DHT 22  (AM2302)
-DHT TempSensor = DHT(DHT_PIN, DHT_TYPE);
+#define DHT_PIN 7       // Pin connected to the DHT-22 sensor
+#define DHT_TYPE DHT11  // DHT 11  (AM2302)
+DHT TempSensor(DHT_PIN, DHT_TYPE);
 
-// Json
+// JSON library for data logging
 #include <ArduinoJson.h>
 StaticJsonDocument<256> jsonDoc;
 
-// Relay
-int PumpPIN = 3;
+// Relay for pump control
+const int PumpPIN = 3;
 
-// LCD
+// LCD display
 #include <LiquidCrystal.h>
 const int rs = 8, en = 9, d4 = 10, d5 = 11, d6 = 12, d7 = 13;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
-// Ligth sensor
-#define LIGHT_PIN 4  // Arduino Nano's pin connected to DO pin of the ldr module
+// Light sensor
+#define LIGHT_PIN 4  // Pin connected to DO pin of the LDR module
 
-/**** Main *****/
-float temp;
-float humidity;
-int moisture_percent = 0;
-float moisture_raw = 0;
+/**** Constants *****/
+const int AirValue = 463;    // Sensor value when soil is completely dry
+const int WaterValue = 210;  // Sensor value when submerged in water
+
+/**** Global Variables *****/
+float temp = 0.0;
+float humidity = 0.0;
+int moisturePercent = 0;
 int irrigation = 0;
+int lightState;
 
-
-void pump_on(boolean register_log = true) {
-  digitalWrite(PumpPIN, LOW);  // Turn the pump on
-  irrigation = 1;              // Set irrigation state to 1 (on)
-
-  if (register_log) {                   // If logging is enabled
-    addData("irrigation", irrigation);  // Log the irrigation state
-  }
-}
-void pump_off(boolean register_log = true) {
-  digitalWrite(PumpPIN, HIGH);  // Turn the pump off (assuming HIGH is off for this setup)
-  irrigation = 0;               // Set irrigation state to 0 (off)
-
-  if (register_log) {                   // Check if logging is enabled
-    addData("irrigation", irrigation);  // Log the irrigation state
-  }
-}
+/**** Function Declarations *****/
+void pumpOn(bool registerLog = true);
+void pumpOff(bool registerLog = true);
+void getTemperature();
+void getHumidity();
+void getMoisture();
+void getLight();
+void displayData();
+void addData(const char* key, float value);
+void printJson();
 
 void setup() {
   Serial.begin(115200);
-
-  // Pump
+  //
+  TempSensor.begin();
+  delay(1000);
+  // Initialize pump
   pinMode(PumpPIN, OUTPUT);
-  pump_off(false);
+  pumpOff(false);  // Ensure pump is off initially
 
-  // set up the LCD's number of columns and rows:
+  // Initialize LCD
   lcd.begin(16, 2);
 
-  // Light sensor
+  // Initialize light sensor
   pinMode(LIGHT_PIN, INPUT);
 }
 
 void loop() {
   lcd.clear();
-  delay(1000);
-  get_temp();
-  delay(1000);
-  get_humidity();
-    delay(1000);
-  get_moisture();
-  if (moisture_percent < 25) {
-    pump_on();
 
+  getTemperature();
+  delay(1000);
+  getHumidity();
+  getMoisture();
+
+  if (moisturePercent < 25) {
+    pumpOn();
   } else {
-    pump_off();
+    pumpOff();
   }
-  get_light();
 
+  getLight();
   printJson();
-  display_on();
-  delay(1000);
+  displayData();
+
+  delay(1000);  // Add a delay to avoid overwhelming the loop
 }
 
-void get_temp() {
+/**** Function Definitions *****/
+void pumpOn(bool registerLog) {
+  digitalWrite(PumpPIN, LOW);  // Turn the pump on
+  irrigation = 1;              // Update irrigation state
 
+  if (registerLog) {
+    addData("irrigation", irrigation);  // Log the irrigation state
+  }
+}
+
+void pumpOff(bool registerLog) {
+  digitalWrite(PumpPIN, HIGH);  // Turn the pump off
+  irrigation = 0;               // Update irrigation state
+
+  if (registerLog) {
+    addData("irrigation", irrigation);  // Log the irrigation state
+  }
+}
+
+void getTemperature() {
   temp = TempSensor.readTemperature();
   addData("temp", temp);
 }
 
-void get_humidity() {
+void getHumidity() {
   humidity = TempSensor.readHumidity();
   addData("humidity", humidity);
 }
 
-void get_moisture() {
-  const int AirValue = 463;    //This is the sensor value when completely dry
-  const int WaterValue = 210;  //This is the sensor value when submerged in water.
-  int moisture_raw = 0;
+void getMoisture() {
+  int moistureRaw = analogRead(A0);  // Read moisture sensor value
+  addData("moistureraw", moistureRaw);
 
-  moisture_raw = analogRead(A0);  //put Sensor insert into soil
-  addData("moisture_raw", moisture_raw);
-  moisture_percent = map(moisture_raw, AirValue, WaterValue, 0, 100);
-  if (moisture_percent > 99) {
-    moisture_percent = 100;
-  } else if (moisture_percent < 1) {
-    moisture_percent = 0;
+  moisturePercent = map(moistureRaw, AirValue, WaterValue, 0, 100);
+  moisturePercent = constrain(moisturePercent, 0, 100);
+  addData("moisture", moisturePercent);
+}
+
+void getLight() {
+  lightState = digitalRead(LIGHT_PIN);
+  if (lightState == 1) {
+    lightState = 0;
+  } else {
+    lightState = 1;
   }
-  addData("moisture", moisture_percent);
+  addData("lightstate", lightState);
 }
 
-void get_light() {
-  int light_state = digitalRead(LIGHT_PIN);
-   addData("light_state", light_state);
-}
-
-void display_on() {
-
-
+void displayData() {
   lcd.setCursor(1, 0);
   lcd.print("Naturalment TV");
+
   lcd.setCursor(0, 1);
   lcd.print("Temp: ");
   lcd.print(temp);
   lcd.print(" C       ");
-  delay(3000);
+  delay(4000);
 
   lcd.setCursor(0, 1);
   lcd.print("Humedad: ");
   lcd.print(humidity);
   lcd.print(" %       ");
-  delay(3000);
+  delay(4000);
 
   lcd.setCursor(0, 1);
   lcd.print("Suelo C/A: ");
-  lcd.print(moisture_percent);
+  lcd.print(moisturePercent);
   lcd.print(" %          ");
-  delay(3000);
+  delay(4000);
+
+  lcd.setCursor(0, 1);
+  lcd.print("Sol: ");
+  if (lightState == 0)
+    lcd.print("Ausente      ");
+  else
+    lcd.print("Presente     ");
+
+  delay(4000);
 }
 
-
 void addData(const char* key, float value) {
-  // Add or update data in JSON
   jsonDoc[key] = value;
 }
 
 void printJson() {
-  // Convert JSON object to string and print it
   String jsonString;
   serializeJson(jsonDoc, jsonString);
   Serial.println(jsonString);
