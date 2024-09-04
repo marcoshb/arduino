@@ -40,7 +40,7 @@ void getHumidity();
 void getMoisture();
 void getLight();
 void displayData();
-void addData(const char* key, float value);
+void addData(const char* key, String value);
 void printJson();
 
 void setup() {
@@ -86,7 +86,7 @@ void pumpOn(bool registerLog) {
   irrigation = 1;              // Update irrigation state
 
   if (registerLog) {
-    addData("irrigation", irrigation);  // Log the irrigation state
+    addData("i", String(irrigation));  // Log the irrigation state
   }
 }
 
@@ -95,27 +95,27 @@ void pumpOff(bool registerLog) {
   irrigation = 0;               // Update irrigation state
 
   if (registerLog) {
-    addData("irrigation", irrigation);  // Log the irrigation state
+    addData("i", String(irrigation));  // Log the irrigation state
   }
 }
 
 void getTemperature() {
   temp = TempSensor.readTemperature();
-  addData("temp", temp);
+  addData("t", String(temp));
 }
 
 void getHumidity() {
   humidity = TempSensor.readHumidity();
-  addData("humidity", humidity);
+  addData("h", String(humidity));
 }
 
 void getMoisture() {
   int moistureRaw = analogRead(A0);  // Read moisture sensor value
-  addData("moistureraw", moistureRaw);
+  addData("mr", String(moistureRaw));
 
   moisturePercent = map(moistureRaw, AirValue, WaterValue, 0, 100);
   moisturePercent = constrain(moisturePercent, 0, 100);
-  addData("moisture", moisturePercent);
+  addData("m", String(moisturePercent));
 }
 
 void getLight() {
@@ -125,7 +125,7 @@ void getLight() {
   } else {
     lightState = 1;
   }
-  addData("lightstate", lightState);
+  addData("ls", String(lightState));
 }
 
 void displayData() {
@@ -160,7 +160,7 @@ void displayData() {
   delay(4000);
 }
 
-void addData(const char* key, float value) {
+void addData(const char* key, String value) {
   jsonDoc[key] = value;
 }
 

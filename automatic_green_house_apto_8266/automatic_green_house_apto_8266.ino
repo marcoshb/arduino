@@ -10,10 +10,6 @@ const char* password = "roger_123";
 // ThingSpeak API URL (base)
 String serverName = "https://api.thingspeak.com/update?api_key=ZJ0WUU6IYY8UDHWV";
 
-// Variables for dynamic data
-int temperature = 26;  // Replace with your sensor reading
-int humidity = 55;     // Replace with your sensor reading
-
 WiFiClientSecure wifiClient;
 
 // Structure to define mapping between JSON keys and URL fields
@@ -24,14 +20,16 @@ struct FieldMapping {
 
 // Array of field mappings
 FieldMapping fieldMappings[] = {
-  { "temp", "field1" },
-  { "humidity", "field2" },
-   { "moisture", "field3" },
-  { "irrigation", "field4" },
+  { "t", "field1" },
+  { "h", "field2" },
+  { "mr", "field3" },
+  { "m", "field4" },
+  { "i", "field5" },
+  { "ls", "field6" },
 };
 
 // Function to construct URL from JSON document
-String constructURL(const StaticJsonDocument<256>& jsonDoc) {
+String constructURL(const JsonDocument& jsonDoc) {
   String fullURL = serverName;
 
   // Iterate over field mappings and construct URL
@@ -45,66 +43,88 @@ String constructURL(const StaticJsonDocument<256>& jsonDoc) {
   return fullURL;
 }
 
-void setup() {
-  // Start the Serial communication to debug the results
-  Serial.begin(115200);
-  // Connect to Wi-Fi
+void connectToWiFi() {
   WiFi.begin(ssid, password);
-  Serial.println("Connecting to WiFi...");
+  Serial.print("Connecting to WiFi");
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("");
-  Serial.println("Connected to WiFi");
+  Serial.println("\nConnected to WiFi");
+}
+
+void setup() {
+  // Start the Serial communication to debug the results
+  Serial.begin(115200);
+  connectToWiFi();
 
   // Optional: Disable SSL certificate verification (not recommended for production)
   wifiClient.setInsecure();
-
-  //Serial.println("{\"temperature\":\"25\",\"humidity\":\"56\"}");
 }
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
-    delay(35000);
     HTTPClient http;
 
-    String jsonData = Serial.readStringUntil('\n');  // Read JSON string from Arduino
-
-    // Print received JSON string for debugging
-    Serial.println("Received JSON: " + jsonData);
-
-    StaticJsonDocument<256> jsonDoc;
-
-    // Parse JSON data
-    DeserializationError error = deserializeJson(jsonDoc, jsonData);
-
-    if (error) {
-      Serial.print(F("deserializeJson() failed: "));
-      Serial.println(error.f_str());
-      return;
+    // Read all available data from Serial input
+    String jsonData = "";
+    while (Serial.available() > 0) {
+      jsonData += Serial.readStringUntil('\n');
     }
 
-    // Construct the URL using the separate function
-    String fullURL = constructURL(jsonDoc);
+    if (jsonData.length() > 0) {
+      // Split the received data into individual JSON objects
+      int startIndex = 0;
+      while (startIndex < jsonData.length()) {
+        int endIndex = jsonData.indexOf('\n', startIndex);
+        if (endIndex == -1) {
+          endIndex = jsonData.length();
+        }
 
-    Serial.println(fullURL);  // Print HTTP return code
-    // Initialize the HTTPS request with WiFiClientSecure and the full URL
-    http.begin(wifiClient, fullURL);  // Updated to use WiFiClientSecure
-    int httpCode = http.GET();        // Send the request
+        String singleJsonData = jsonData.substring(startIndex, endIndex);
+        startIndex = endIndex + 1;
 
-    // Check the returning code
-    if (httpCode > 0) {
-      String payload = http.getString();  // Get the request response payload
-      Serial.println(httpCode);           // Print HTTP return code
-      Serial.println(payload);            // Print request response payload
+        // Print received JSON string for debugging
+        Serial.println("Received JSON: " + singleJsonData);
+
+        DynamicJsonDocument jsonDoc(256);
+
+        // Parse JSON data
+        DeserializationError error = deserializeJson(jsonDoc, singleJsonData);
+
+        if (error) {
+          Serial.print(F("deserializeJson() failed: "));
+          Serial.println(error.f_str());
+          continue;
+        }
+
+        // Construct the URL using the separate function
+        String fullURL = constructURL(jsonDoc);
+
+        Serial.println(fullURL);  // Print constructed URL
+        // Initialize the HTTPS request with WiFiClientSecure and the full URL
+        http.begin(wifiClient, fullURL);  // Updated to use WiFiClientSecure
+        int httpCode = http.GET();        // Send the request
+
+        // Check the returning code
+        if (httpCode > 0) {
+          String payload = http.getString();  // Get the request response payload
+          Serial.println(httpCode);           // Print HTTP return code
+          Serial.println(payload);            // Print request response payload
+        } else {
+          Serial.println("Error on HTTP request");
+        }
+
+        http.end();  // Close connection
+      }
     } else {
-      Serial.println("Error on HTTP request");
+      Serial.println("No data available on Serial");
     }
-
-    http.end();  // Close connection
   } else {
     Serial.println("WiFi not connected");
+    connectToWiFi();
   }
+
+  delay(10000);  // Adjust delay as needed
 }
